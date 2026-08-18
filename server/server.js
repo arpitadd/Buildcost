@@ -21,10 +21,11 @@ validateEnvironment();
 const app = express();
 const PORT = process.env.PORT || 5000;
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
+const allowedOrigins = [CLIENT_ORIGIN, /\.vercel\.app$/];
 
 // Restrict CORS to configured client origin only
 app.use(cors({
-  origin: CLIENT_ORIGIN,
+  origin: allowedOrigins,
   credentials: true,
 }));
 app.use(express.json());
