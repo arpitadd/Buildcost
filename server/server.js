@@ -30,6 +30,17 @@ app.use(cors({
 }));
 app.use(express.json());
 
+// Ensure MongoDB is connected on every request (serverless-safe)
+app.use(async (req, res, next) => {
+  try {
+    await connectDB();
+    next();
+  } catch (err) {
+    console.error('DB connection failed:', err.message);
+    res.status(503).json({ error: 'Database unavailable. Please try again.' });
+  }
+});
+
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok' });
@@ -41,19 +52,19 @@ app.use('/api/auth', authRoutes);
 // Project & Estimation routes
 app.use('/api/projects', projectRoutes);
 
-// Connect to MongoDB and start server
-async function startServer() {
-  try {
-    await connectDB();
-  } catch (error) {
-    console.warn('⚠️  Warning: MongoDB connection could not be established immediately.', error.message);
+// Connect to MongoDB and start server (local dev only)
+if (process.env.NODE_ENV !== 'production') {
+  async function startServer() {
+    try {
+      await connectDB();
+    } catch (error) {
+      console.warn('⚠️  Warning: MongoDB connection could not be established immediately.', error.message);
+    }
+    app.listen(PORT, () => {
+      console.log(`Server listening on port ${PORT}`);
+    });
   }
-
-  app.listen(PORT, () => {
-    console.log(`Server listening on port ${PORT}`);
-  });
+  startServer();
 }
-
-startServer();
 
 export default app;
