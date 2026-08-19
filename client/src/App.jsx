@@ -1250,10 +1250,10 @@ export default function App() {
         )}
       </main>
 
-      {/* Simple Clean White Creation Modal */}
+      {/* Expanded Full-Featured Creation Modal */}
       {showCreateModal && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
-          <div className="bg-white border border-slate-200 rounded-lg max-w-lg w-full p-5 space-y-4 my-8 shadow-xl">
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className="bg-white border border-slate-200 rounded-xl max-w-3xl w-full p-6 space-y-5 my-8 shadow-2xl">
             <div className="flex items-center justify-between pb-2 border-b border-slate-200">
               <h2 className="text-sm font-bold text-slate-900">New House Project</h2>
               <button onClick={() => setShowCreateModal(false)} className="text-slate-400 hover:text-slate-700 text-sm cursor-pointer">
@@ -1382,107 +1382,130 @@ export default function App() {
                 )}
               </div>
             ) : (
-              <form onSubmit={handleCreateProject} className="space-y-3 text-xs">
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block text-slate-700 font-medium mb-1">Project Name</label>
-                    <input
-                      type="text"
-                      required
-                      value={formData.name}
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                      className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded text-slate-900"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-slate-700 font-medium mb-1">City / Locality</label>
-                    <input
-                      type="text"
-                      required
-                      value={formData.location_text}
-                      onChange={(e) => setFormData({ ...formData, location_text: e.target.value })}
-                      className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded text-slate-900"
-                    />
+              <form onSubmit={handleCreateProject} className="space-y-5 text-xs">
+
+                {/* Section 1: Project Info */}
+                <div>
+                  <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">📌 Project Info</h3>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-slate-700 font-medium mb-1">Project Name</label>
+                      <input type="text" required value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} placeholder="e.g. 3 BHK Residential House" className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500" />
+                    </div>
+                    <div>
+                      <label className="block text-slate-700 font-medium mb-1">City / Locality</label>
+                      <input type="text" required value={formData.location_text} onChange={(e) => setFormData({ ...formData, location_text: e.target.value })} placeholder="e.g. Whitefield, Bengaluru" className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500" />
+                    </div>
+                    <div>
+                      <label className="block text-slate-700 font-medium mb-1">State / Rate Index</label>
+                      <select value={formData.region_code} onChange={(e) => setFormData({ ...formData, region_code: e.target.value })} className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500">
+                        {REGIONS.map(r => (<option key={r.code} value={r.code}>{r.name} ({r.tier})</option>))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-slate-700 font-medium mb-1">Build Type</label>
+                      <select value={formData.build_type} onChange={(e) => setFormData({ ...formData, build_type: e.target.value })} className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500">
+                        <option>Residential House</option>
+                        <option>Villa</option>
+                        <option>Duplex</option>
+                        <option>Apartment Unit</option>
+                        <option>Row House</option>
+                        <option>Farm House</option>
+                      </select>
+                    </div>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block text-slate-700 font-medium mb-1">State / Rate Index</label>
-                    <select
-                      value={formData.region_code}
-                      onChange={(e) => setFormData({ ...formData, region_code: e.target.value })}
-                      className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded text-slate-900"
-                    >
-                      {REGIONS.map(r => (
-                        <option key={r.code} value={r.code}>{r.name} ({r.tier})</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-slate-700 font-medium mb-1">Plot Area (sqft)</label>
-                    <input
-                      type="number"
-                      required
-                      min={100}
-                      value={formData.land_size_sqft}
-                      onChange={(e) => setFormData({ ...formData, land_size_sqft: e.target.value })}
-                      className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded text-slate-900"
-                    />
+                {/* Section 2: Land Details */}
+                <div className="pt-1 border-t border-slate-100">
+                  <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3">🏔️ Land Details</h3>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-slate-700 font-medium mb-1">Plot Area (sqft)</label>
+                      <input type="number" required min={100} value={formData.land_size_sqft} onChange={(e) => setFormData({ ...formData, land_size_sqft: e.target.value })} placeholder="e.g. 2400" className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500" />
+                    </div>
+                    <div>
+                      <label className="block text-slate-700 font-medium mb-1">Terrain</label>
+                      <select value={formData.topography} onChange={(e) => setFormData({ ...formData, topography: e.target.value })} className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500">
+                        <option>Flat Terrain</option>
+                        <option>Gentle Slope</option>
+                        <option>Steep Slope</option>
+                        <option>Hilly</option>
+                        <option>Rocky</option>
+                        <option>Waterlogged</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-slate-700 font-medium mb-1">Soil Type</label>
+                      <select value={formData.soil_type} onChange={(e) => setFormData({ ...formData, soil_type: e.target.value })} className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500">
+                        <option>Red Soil</option>
+                        <option>Black Cotton Soil</option>
+                        <option>Alluvial Soil</option>
+                        <option>Sandy Soil</option>
+                        <option>Laterite Soil</option>
+                        <option>Rocky / Hard</option>
+                        <option>Clay Soil</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-slate-700 font-medium mb-1">Utilities</label>
+                      <select value={formData.utilities_status} onChange={(e) => setFormData({ ...formData, utilities_status: e.target.value })} className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500">
+                        <option>Connected</option>
+                        <option>Partial</option>
+                        <option>None</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-slate-700 font-medium mb-1">Zoning / Approval</label>
+                      <select value={formData.zoning_type} onChange={(e) => setFormData({ ...formData, zoning_type: e.target.value })} className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500">
+                        <option>BBMP / BDA Approved</option>
+                        <option>HMDA / GHMC Approved</option>
+                        <option>DTCP Approved</option>
+                        <option>Gram Panchayat</option>
+                        <option>RERA Registered</option>
+                        <option>NA Plot</option>
+                      </select>
+                    </div>
+                    <div className="flex items-end pb-1">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" checked={formData.has_access_road} onChange={(e) => setFormData({ ...formData, has_access_road: e.target.checked })} className="w-4 h-4 accent-blue-600 rounded" />
+                        <span className="text-slate-700 font-medium">Has Access Road</span>
+                      </label>
+                    </div>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-2">
-                  <div>
-                    <label className="block text-slate-700 font-medium mb-1">Built-Up (sqft)</label>
-                    <input
-                      type="number"
-                      required
-                      min={100}
-                      value={formData.total_sqft}
-                      onChange={(e) => setFormData({ ...formData, total_sqft: e.target.value })}
-                      className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded text-slate-900"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-slate-700 font-medium mb-1">Floors</label>
-                    <input
-                      type="number"
-                      required
-                      min={1}
-                      value={formData.floors}
-                      onChange={(e) => setFormData({ ...formData, floors: e.target.value })}
-                      className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded text-slate-900"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-slate-700 font-medium mb-1">Finish Tier</label>
-                    <select
-                      value={formData.material_tier}
-                      onChange={(e) => setFormData({ ...formData, material_tier: e.target.value })}
-                      className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded text-slate-900"
-                    >
-                      {MATERIAL_TIERS.map(t => (
-                        <option key={t.value} value={t.value}>{t.label}</option>
-                      ))}
-                    </select>
+                {/* Section 3: Build Specifications */}
+                <div className="pt-1 border-t border-slate-100">
+                  <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3">🏗️ Build Specifications</h3>
+                  <div className="grid grid-cols-4 gap-3">
+                    <div>
+                      <label className="block text-slate-700 font-medium mb-1">Built-Up (sqft)</label>
+                      <input type="number" required min={100} value={formData.total_sqft} onChange={(e) => setFormData({ ...formData, total_sqft: e.target.value })} placeholder="e.g. 2400" className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500" />
+                    </div>
+                    <div>
+                      <label className="block text-slate-700 font-medium mb-1">No. of Floors</label>
+                      <input type="number" required min={1} max={10} value={formData.floors} onChange={(e) => setFormData({ ...formData, floors: e.target.value })} className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500" />
+                    </div>
+                    <div>
+                      <label className="block text-slate-700 font-medium mb-1">Finish Tier</label>
+                      <select value={formData.material_tier} onChange={(e) => setFormData({ ...formData, material_tier: e.target.value })} className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500">
+                        {MATERIAL_TIERS.map(t => (<option key={t.value} value={t.value}>{t.label} — {t.desc}</option>))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-slate-700 font-medium mb-1">Timeline (months)</label>
+                      <input type="number" required min={3} max={60} value={formData.timeline_months} onChange={(e) => setFormData({ ...formData, timeline_months: e.target.value })} className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500" />
+                    </div>
                   </div>
                 </div>
 
                 <div className="flex justify-end gap-2 pt-3 border-t border-slate-200">
-                  <button
-                    type="button"
-                    onClick={() => setShowCreateModal(false)}
-                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded cursor-pointer"
-                  >
+                  <button type="button" onClick={() => setShowCreateModal(false)} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg cursor-pointer font-medium">
                     Cancel
                   </button>
-                  <button
-                    type="submit"
-                    disabled={createLoading}
-                    className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded cursor-pointer"
-                  >
-                    {createLoading ? 'Creating...' : 'Create Project'}
+                  <button type="submit" disabled={createLoading} className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg cursor-pointer shadow-sm">
+                    {createLoading ? 'Creating...' : '✓ Create Project'}
                   </button>
                 </div>
               </form>
@@ -1490,6 +1513,7 @@ export default function App() {
           </div>
         </div>
       )}
+
 
       {/* Custom UI Warning / Confirmation Dialog for Delete */}
       {deleteTarget && (
