@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
 
+const API_BASE = import.meta.env.VITE_API_URL || '';
+
+
 // Complete Indian States & Union Territories Construction Rate Indices
 const REGIONS = [
   { code: 'IN-KA', name: 'Karnataka (Bengaluru/Mysuru)', tier: '₹2,190/sqft' },
@@ -170,7 +173,7 @@ export default function App() {
   const verifySession = useCallback(async (authToken) => {
     if (!authToken) return;
     try {
-      const res = await fetch('/api/auth/me', {
+      const res = await fetch(`${API_BASE}/api/auth/me`, {
         headers: { Authorization: `Bearer ${authToken}` },
       });
       const data = await res.json();
@@ -185,7 +188,7 @@ export default function App() {
 
   const fetchProjects = async (authToken = token) => {
     try {
-      const res = await fetch('/api/projects', {
+      const res = await fetch(`${API_BASE}/api/projects`, {
         headers: { Authorization: `Bearer ${authToken}` },
       });
       const data = await res.json();
@@ -203,7 +206,7 @@ export default function App() {
     setAiEstimate(null);
     setAiExplanationText('');
     try {
-      const res = await fetch(`/api/projects/${id}`, {
+      const res = await fetch(`${API_BASE}/api/projects/${id}`, {
         headers: { Authorization: `Bearer ${authToken}` },
       });
       const data = await res.json();
@@ -232,7 +235,7 @@ export default function App() {
     const { id } = deleteTarget;
     setDeletingId(id);
     try {
-      const res = await fetch(`/api/projects/${id}`, {
+      const res = await fetch(`${API_BASE}/api/projects/${id}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -260,7 +263,7 @@ export default function App() {
   const fetchLatestEstimates = async (projId, authToken = token) => {
     try {
       // Fetch version 1 as baseline (always the first run)
-      const baseRes = await fetch(`/api/projects/${projId}/estimate/1`, {
+      const baseRes = await fetch(`${API_BASE}/api/projects/${projId}/estimate/1`, {
         headers: { Authorization: `Bearer ${authToken}` },
       });
       if (baseRes.ok) {
@@ -272,7 +275,7 @@ export default function App() {
         let latestAiVersion = null;
         let probe = 2;
         while (probe <= 20) { // safety cap at version 20
-          const aiRes = await fetch(`/api/projects/${projId}/estimate/${probe}`, {
+          const aiRes = await fetch(`${API_BASE}/api/projects/${projId}/estimate/${probe}`, {
             headers: { Authorization: `Bearer ${authToken}` },
           });
           if (!aiRes.ok) break;
@@ -292,7 +295,7 @@ export default function App() {
 
   const fetchBaselineEstimate = async (projId, authToken = token) => {
     try {
-      const res = await fetch(`/api/projects/${projId}/estimate/1`, {
+      const res = await fetch(`${API_BASE}/api/projects/${projId}/estimate/1`, {
         headers: { Authorization: `Bearer ${authToken}` },
       });
       const data = await res.json();
@@ -304,7 +307,7 @@ export default function App() {
 
   const fetchAiAdjustedEstimate = async (projId, authToken = token) => {
     try {
-      const res = await fetch(`/api/projects/${projId}/estimate/2`, {
+      const res = await fetch(`${API_BASE}/api/projects/${projId}/estimate/2`, {
         headers: { Authorization: `Bearer ${authToken}` },
       });
       const data = await res.json();
@@ -321,7 +324,7 @@ export default function App() {
     if (!selectedProjectId) return;
     setLoadingEstimate(true);
     try {
-      const res = await fetch(`/api/projects/${selectedProjectId}/estimate/baseline`, {
+      const res = await fetch(`${API_BASE}/api/projects/${selectedProjectId}/estimate/baseline`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -340,7 +343,7 @@ export default function App() {
     if (!selectedProjectId) return;
     setLoadingAiAdjust(true);
     try {
-      const res = await fetch(`/api/projects/${selectedProjectId}/estimate/aiadjust`, {
+      const res = await fetch(`${API_BASE}/api/projects/${selectedProjectId}/estimate/aiadjust`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -361,7 +364,7 @@ export default function App() {
     if (!selectedProjectId) return;
     setLoadingExplanation(true);
     try {
-      const res = await fetch(`/api/projects/${selectedProjectId}/estimate/${version}/explain`, {
+      const res = await fetch(`${API_BASE}/api/projects/${selectedProjectId}/estimate/${version}/explain`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -380,7 +383,7 @@ export default function App() {
     setRecalculatingWhatIf(true);
     try {
       // Fix: check PUT response before proceeding
-      const specsRes = await fetch(`/api/projects/${selectedProjectId}/specs`, {
+      const specsRes = await fetch(`${API_BASE}/api/projects/${selectedProjectId}/specs`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -397,7 +400,7 @@ export default function App() {
         throw new Error(specsErr.error || 'Failed to update project specs');
       }
 
-      const baseRes = await fetch(`/api/projects/${selectedProjectId}/estimate/baseline`, {
+      const baseRes = await fetch(`${API_BASE}/api/projects/${selectedProjectId}/estimate/baseline`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -405,7 +408,7 @@ export default function App() {
       if (!baseRes.ok) throw new Error(baseData.error || 'Baseline re-calculation failed');
       setBaselineEstimate(baseData);
 
-      const aiRes = await fetch(`/api/projects/${selectedProjectId}/estimate/aiadjust`, {
+      const aiRes = await fetch(`${API_BASE}/api/projects/${selectedProjectId}/estimate/aiadjust`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -428,7 +431,7 @@ export default function App() {
     setNlLoading(true);
     setCreateError(null);
     try {
-      const res = await fetch('/api/projects/parse-description', {
+      const res = await fetch(`${API_BASE}/api/projects/parse-description`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -493,7 +496,7 @@ export default function App() {
     };
 
     try {
-      const res = await fetch('/api/projects', {
+      const res = await fetch(`${API_BASE}/api/projects`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -523,7 +526,7 @@ export default function App() {
     setAuthLoading(true);
     setAuthError(null);
 
-    const endpoint = authMode === 'register' ? '/api/auth/register' : '/api/auth/login';
+    const endpoint = authMode === 'register' ? `${API_BASE}/api/auth/register` : `${API_BASE}/api/auth/login`;
     try {
       const res = await fetch(endpoint, {
         method: 'POST',
