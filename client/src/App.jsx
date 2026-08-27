@@ -877,7 +877,7 @@ export default function App() {
           ) : (
             <div className="flex items-center gap-2">
               <button
-                onClick={() => setAuthMode('login')}
+                onClick={() => { setAuthMode('login'); setEmail(''); setPassword(''); setAuthError(null); }}
                 className={`px-3 py-1 text-xs rounded transition cursor-pointer ${
                   authMode === 'login'
                     ? 'bg-blue-600 text-white font-medium shadow-xs'
@@ -887,7 +887,7 @@ export default function App() {
                 Sign In
               </button>
               <button
-                onClick={() => setAuthMode('register')}
+                onClick={() => { setAuthMode('register'); setEmail(''); setPassword(''); setAuthError(null); }}
                 className={`px-3 py-1 text-xs rounded transition cursor-pointer ${
                   authMode === 'register'
                     ? 'bg-blue-600 text-white font-medium shadow-xs'
