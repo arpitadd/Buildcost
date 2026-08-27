@@ -13,6 +13,7 @@ import {
   explainEstimateVersion,
   getEstimateByVersion,
 } from '../controllers/estimateController.js';
+import { findContractorsForProject } from '../controllers/contractorController.js';
 import { authenticateToken } from '../middleware/auth.js';
 import {
   validateBody,
@@ -43,6 +44,10 @@ router.post('/:id/estimate/baseline', createBaselineEstimate);
 router.post('/:id/estimate/aiadjust', aiRateLimiter, createAiAdjustedEstimate);
 router.post('/:id/estimate/:version/explain', aiRateLimiter, explainEstimateVersion);
 router.get('/:id/estimate/:version', getEstimateByVersion);
+
+// Contractor discovery — project-based matching
+// GET /api/projects/:id/contractors?sort=relevance
+router.get('/:id/contractors', findContractorsForProject);
 
 export default router;
 

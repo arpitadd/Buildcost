@@ -71,3 +71,25 @@ export const updateProjectSpecsSchema = z.object({
 export const parseDescriptionSchema = z.object({
   description: z.string().min(5, 'Description must be at least 5 characters.').max(1000),
 });
+
+// -----------------------------------------------------------------------------
+// Contractor Schemas
+// -----------------------------------------------------------------------------
+export const quoteRequestSchema = z.object({
+  project_id: z.string().optional(),
+  message: z.string().max(1000, 'Message must be 1000 characters or fewer.').optional(),
+});
+
+export const contractorQuerySchema = z.object({
+  search: z.string().max(200).optional(),
+  region: z.string().max(200).optional(),
+  project_type: z.string().max(100).optional(),
+  specialty: z.string().max(100).optional(),
+  budget_min: z.string().optional(),
+  budget_max: z.string().optional(),
+  size_min: z.string().optional(),
+  size_max: z.string().optional(),
+  sort: z.enum(['rating', 'experience', 'projects', 'name', 'relevance']).optional(),
+  page: z.string().optional(),
+  limit: z.string().optional(),
+});

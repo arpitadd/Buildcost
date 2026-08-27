@@ -130,6 +130,40 @@ export default function App() {
   const [whatIfSqft, setWhatIfSqft] = useState(2400);
   const [recalculatingWhatIf, setRecalculatingWhatIf] = useState(false);
 
+  // ── Navigation / View State ────────────────────────────────────────────────
+  // 'dashboard' | 'contractors' | 'contractor_detail' | 'quote_requests'
+  const [activeView, setActiveView] = useState('dashboard');
+
+  // ── Contractor Discovery State ─────────────────────────────────────────────
+  // Context injected from a project/estimate (pre-populates filters)
+  const [contractorProjectContext, setContractorProjectContext] = useState(null);
+  const [contractors, setContractors] = useState([]);
+  const [contractorTotal, setContractorTotal] = useState(0);
+  const [loadingContractors, setLoadingContractors] = useState(false);
+  const [contractorFilters, setContractorFilters] = useState({
+    search: '',
+    region: '',
+    project_type: '',
+    specialty: '',
+    budget_min: '',
+    budget_max: '',
+    size_min: '',
+    size_max: '',
+  });
+  const [contractorSort, setContractorSort] = useState('rating');
+
+  // ── Contractor Detail State ────────────────────────────────────────────────
+  const [selectedContractorId, setSelectedContractorId] = useState(null);
+  const [contractorDetail, setContractorDetail] = useState(null);
+  const [loadingContractorDetail, setLoadingContractorDetail] = useState(false);
+
+  // ── Quote Request State ────────────────────────────────────────────────────
+  const [quoteModal, setQuoteModal] = useState({ open: false, contractorId: null, contractorName: '' });
+  const [quoteMessage, setQuoteMessage] = useState('');
+  const [submittingQuote, setSubmittingQuote] = useState(false);
+  const [quoteRequests, setQuoteRequests] = useState([]);
+  const [loadingQuoteRequests, setLoadingQuoteRequests] = useState(false);
+
   // Modal & Project Creation State
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [creationMode, setCreationMode] = useState('wizard');
@@ -168,6 +202,162 @@ export default function App() {
     setBaselineEstimate(null);
     setAiEstimate(null);
     setAiExplanationText('');
+    setActiveView('dashboard');
+  };
+
+  // ── Contractor API Functions ──────────────────────────────────────────────
+
+  const fetchContractors = useCallback(async (filters = {}, sort = 'rating', projectId = null) => {
+    setLoadingContractors(true);
+    try {
+      const params = new URLSearchParams();
+      Object.entries(filters).forEach(([k, v]) => { if (v) params.set(k, v); });
+      if (sort) params.set('sort', sort);
+
+      // If we have a project ID, use the project-based matching endpoint
+      const endpoint = projectId
+        ? `${API_BASE}/api/projects/${projectId}/contractors?${params}`
+        : `${API_BASE}/api/contractors?${params}`;
+
+      const res = await fetch(endpoint, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to fetch contractors');
+      setContractors(data.contractors || []);
+      setContractorTotal(data.total || 0);
+    } catch (err) {
+      showToast(`Contractors: ${err.message}`);
+      setContractors([]);
+    } finally {
+      setLoadingContractors(false);
+    }
+  }, [token, showToast]);
+
+  const fetchContractorDetail = async (id) => {
+    setLoadingContractorDetail(true);
+    setContractorDetail(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/contractors/${id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to fetch contractor');
+      setContractorDetail(data.contractor);
+    } catch (err) {
+      showToast(`Contractor detail: ${err.message}`);
+    } finally {
+      setLoadingContractorDetail(false);
+    }
+  };
+
+  const handleOpenContractorDetail = async (id) => {
+    setSelectedContractorId(id);
+    setActiveView('contractor_detail');
+    await fetchContractorDetail(id);
+  };
+
+  const handleFindContractorsForProject = () => {
+    // Pre-populate context from the current project and estimate
+    const context = projectDetails ? {
+      projectId: projectDetails.project._id,
+      projectName: projectDetails.project.name,
+      region_code: projectDetails.project.region_code,
+      location_text: projectDetails.project.location_text,
+      build_type: projectDetails.build_specs?.build_type || '',
+      total_sqft: projectDetails.build_specs?.total_sqft || null,
+      total_budget_lakh: activeEstimate?.summary?.total_expected
+        ? Math.round(activeEstimate.summary.total_expected / 100000 * 10) / 10
+        : null,
+    } : null;
+
+    // Pre-populate filters from context
+    if (context) {
+      setContractorProjectContext(context);
+      setContractorFilters(prev => ({
+        ...prev,
+        region: context.region_code || '',
+        project_type: context.build_type || '',
+      }));
+      setContractorSort('relevance');
+    }
+
+    setActiveView('contractors');
+    // Trigger fetch with project context
+    fetchContractors(
+      {
+        region: context?.region_code || '',
+        project_type: context?.build_type || '',
+      },
+      'relevance',
+      context?.projectId || null
+    );
+  };
+
+  const handleNavigateToContractors = () => {
+    // Browse without project context
+    setContractorProjectContext(null);
+    setContractorFilters({ search: '', region: '', project_type: '', specialty: '', budget_min: '', budget_max: '', size_min: '', size_max: '' });
+    setContractorSort('rating');
+    setActiveView('contractors');
+    fetchContractors({}, 'rating', null);
+  };
+
+  const handleApplyContractorFilters = () => {
+    fetchContractors(
+      contractorFilters,
+      contractorSort,
+      contractorProjectContext?.projectId || null
+    );
+  };
+
+  const submitQuoteRequest = async () => {
+    if (!quoteModal.contractorId) return;
+    setSubmittingQuote(true);
+    try {
+      const body = {
+        message: quoteMessage,
+        project_id: contractorProjectContext?.projectId || undefined,
+      };
+      const res = await fetch(`${API_BASE}/api/contractors/${quoteModal.contractorId}/quote`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to submit request');
+      setQuoteModal({ open: false, contractorId: null, contractorName: '' });
+      setQuoteMessage('');
+      showToast(`Quote request sent to ${quoteModal.contractorName}!`, 'success');
+    } catch (err) {
+      showToast(`Quote request error: ${err.message}`);
+    } finally {
+      setSubmittingQuote(false);
+    }
+  };
+
+  const fetchQuoteRequests = async () => {
+    setLoadingQuoteRequests(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/quote-requests`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to fetch quote requests');
+      setQuoteRequests(data.quote_requests || []);
+    } catch (err) {
+      showToast(`Quote requests: ${err.message}`);
+    } finally {
+      setLoadingQuoteRequests(false);
+    }
+  };
+
+  const handleNavigateToQuoteRequests = () => {
+    setActiveView('quote_requests');
+    fetchQuoteRequests();
   };
 
   const verifySession = useCallback(async (authToken) => {
@@ -645,18 +835,38 @@ export default function App() {
           </button>
 
           {currentUser ? (
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               <button
                 onClick={handleGoHome}
                 className={`text-xs px-2.5 py-1 rounded transition cursor-pointer ${
-                  !selectedProjectId
+                  activeView === 'dashboard' && !selectedProjectId
                     ? 'bg-blue-50 text-blue-700 font-semibold border border-blue-200'
                     : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                 }`}
               >
                 🏠 Home
               </button>
-              <span className="text-xs text-slate-600 font-medium hidden md:inline">{currentUser.email}</span>
+              <button
+                onClick={handleNavigateToContractors}
+                className={`text-xs px-2.5 py-1 rounded transition cursor-pointer hidden sm:inline-flex items-center gap-1 ${
+                  activeView === 'contractors' || activeView === 'contractor_detail'
+                    ? 'bg-emerald-50 text-emerald-700 font-semibold border border-emerald-200'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                }`}
+              >
+                🔍 Find Contractors
+              </button>
+              <button
+                onClick={handleNavigateToQuoteRequests}
+                className={`text-xs px-2.5 py-1 rounded transition cursor-pointer hidden md:inline-flex items-center gap-1 ${
+                  activeView === 'quote_requests'
+                    ? 'bg-indigo-50 text-indigo-700 font-semibold border border-indigo-200'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                }`}
+              >
+                📋 My Requests
+              </button>
+              <span className="text-xs text-slate-600 font-medium hidden lg:inline">{currentUser.email}</span>
               <button
                 onClick={handleLogout}
                 className="px-2.5 py-1 text-xs text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded border border-slate-300 transition cursor-pointer"
@@ -749,7 +959,42 @@ export default function App() {
               </button>
             </form>
           </div>
+        ) : activeView === 'contractors' ? (
+          /* ── Contractor Discovery View ─────────────────────────────────── */
+          <ContractorDiscoveryView
+            contractors={contractors}
+            contractorTotal={contractorTotal}
+            loading={loadingContractors}
+            filters={contractorFilters}
+            setFilters={setContractorFilters}
+            sort={contractorSort}
+            setSort={setContractorSort}
+            onApplyFilters={handleApplyContractorFilters}
+            onViewDetail={handleOpenContractorDetail}
+            onRequestQuote={(id, name) => setQuoteModal({ open: true, contractorId: id, contractorName: name })}
+            projectContext={contractorProjectContext}
+            onBack={() => setActiveView('dashboard')}
+            regions={REGIONS}
+          />
+        ) : activeView === 'contractor_detail' ? (
+          /* ── Contractor Detail View ─────────────────────────────────────── */
+          <ContractorDetailView
+            contractor={contractorDetail}
+            loading={loadingContractorDetail}
+            projectContext={contractorProjectContext}
+            onBack={() => setActiveView('contractors')}
+            onRequestQuote={(id, name) => setQuoteModal({ open: true, contractorId: id, contractorName: name })}
+          />
+        ) : activeView === 'quote_requests' ? (
+          /* ── Quote Requests View ────────────────────────────────────────── */
+          <QuoteRequestsView
+            quoteRequests={quoteRequests}
+            loading={loadingQuoteRequests}
+            onBack={() => setActiveView('dashboard')}
+            onViewContractor={handleOpenContractorDetail}
+          />
         ) : (
+          /* ── Main Dashboard (default) ───────────────────────────────────── */
           /* Clean White Two-Column Dashboard */
           <div className="grid grid-cols-1 md:grid-cols-12 gap-5">
             {/* Left Sidebar: Projects List */}
@@ -1119,6 +1364,29 @@ export default function App() {
                               />
                             </div>
                           </div>
+                        </div>
+
+                        {/* ── Find Contractors CTA Banner ─────────────────── */}
+                        <div className="p-4 bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-lg shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                          <div className="flex items-start gap-3">
+                            <div className="w-9 h-9 rounded-lg bg-emerald-600 flex items-center justify-center text-white text-base shrink-0">
+                              🔍
+                            </div>
+                            <div>
+                              <div className="text-sm font-bold text-emerald-900">Ready to find contractors?</div>
+                              <p className="text-xs text-emerald-700 mt-0.5">
+                                Discover contractors suited to your{' '}
+                                <strong>{projectDetails.project.name}</strong> project.
+                                Filters will be pre-filled from your project specs.
+                              </p>
+                            </div>
+                          </div>
+                          <button
+                            onClick={handleFindContractorsForProject}
+                            className="shrink-0 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg transition shadow-sm cursor-pointer flex items-center gap-2"
+                          >
+                            Find Contractors for This Project →
+                          </button>
                         </div>
                       </div>
                     ) : (
@@ -1561,7 +1829,725 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* ── Quote Request Modal ─────────────────────────────────────────── */}
+      {quoteModal.open && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white border border-slate-200 rounded-xl max-w-lg w-full p-6 space-y-4 shadow-2xl">
+            <div className="flex items-start justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Request Quote</h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Contact <strong>{quoteModal.contractorName}</strong>
+                </p>
+              </div>
+              <button
+                onClick={() => { setQuoteModal({ open: false, contractorId: null, contractorName: '' }); setQuoteMessage(''); }}
+                className="text-slate-400 hover:text-slate-700 text-lg cursor-pointer"
+              >✕</button>
+            </div>
+
+            {contractorProjectContext && (
+              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs space-y-1">
+                <div className="font-semibold text-emerald-800 flex items-center gap-1.5">
+                  📋 Project context will be shared
+                </div>
+                <div className="text-emerald-700 space-y-0.5">
+                  <div><strong>{contractorProjectContext.projectName}</strong> — {contractorProjectContext.location_text}</div>
+                  {contractorProjectContext.build_type && <div>Type: {contractorProjectContext.build_type}</div>}
+                  {contractorProjectContext.total_sqft && <div>Area: {contractorProjectContext.total_sqft.toLocaleString('en-IN')} sqft</div>}
+                  {contractorProjectContext.total_budget_lakh && <div>Est. Budget: ₹{contractorProjectContext.total_budget_lakh} Lakh</div>}
+                </div>
+              </div>
+            )}
+
+            <div>
+              <label className="block text-xs font-medium text-slate-700 mb-1">
+                Message (optional)
+              </label>
+              <textarea
+                rows={4}
+                value={quoteMessage}
+                onChange={(e) => setQuoteMessage(e.target.value)}
+                placeholder="Briefly describe your requirements, preferred timeline, or any specific questions..."
+                className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500 resize-none"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-1 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => { setQuoteModal({ open: false, contractorId: null, contractorName: '' }); setQuoteMessage(''); }}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium rounded-lg cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={submitQuoteRequest}
+                disabled={submittingQuote}
+                className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-semibold rounded-lg cursor-pointer shadow-sm flex items-center gap-1.5"
+              >
+                {submittingQuote ? 'Sending...' : '✓ Send Quote Request'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Helper Components
+// ─────────────────────────────────────────────────────────────────────────────
+
+function MatchBadge({ match }) {
+  if (!match || !match.label) return null;
+  const colors = {
+    'Excellent Match': 'bg-emerald-100 text-emerald-800 border-emerald-300',
+    'Good Match': 'bg-blue-100 text-blue-800 border-blue-300',
+    'Partial Match': 'bg-amber-100 text-amber-800 border-amber-300',
+  };
+  const cls = colors[match.label] || 'bg-slate-100 text-slate-700 border-slate-300';
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${cls}`}>
+      ✦ {match.label} ({match.score}%)
+    </span>
+  );
+}
+
+function StarRating({ rating }) {
+  const full = Math.floor(rating || 0);
+  const half = (rating || 0) - full >= 0.5;
+  return (
+    <span className="flex items-center gap-0.5">
+      {[1, 2, 3, 4, 5].map((i) => (
+        <span
+          key={i}
+          className={i <= full ? 'text-amber-400' : i === full + 1 && half ? 'text-amber-300' : 'text-slate-200'}
+        >
+          ★
+        </span>
+      ))}
+    </span>
+  );
+}
+
+function ContractorCard({ contractor, onViewDetail, onRequestQuote, projectContext }) {
+  const match = contractor._match || null;
+  const budgetLabel =
+    contractor.budget_min_lakh && contractor.budget_max_lakh
+      ? `₹${contractor.budget_min_lakh}–${contractor.budget_max_lakh}L`
+      : contractor.budget_min_lakh
+      ? `₹${contractor.budget_min_lakh}L+`
+      : null;
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs hover:border-emerald-300 hover:shadow-sm transition-all group flex flex-col justify-between gap-3">
+      <div>
+        {/* Header */}
+        <div className="flex items-start justify-between gap-2 mb-2">
+          <div className="min-w-0">
+            <h3 className="font-bold text-slate-900 text-sm leading-snug truncate">{contractor.business_name}</h3>
+            <p className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-1">
+              <span>📍</span>
+              <span className="truncate">{contractor.location_text}</span>
+            </p>
+          </div>
+          {projectContext && match && <MatchBadge match={match} />}
+        </div>
+
+        {/* Description */}
+        <p className="text-xs text-slate-600 leading-relaxed line-clamp-2 mb-3">
+          {contractor.description}
+        </p>
+
+        {/* Specialties */}
+        {contractor.specialties?.length > 0 && (
+          <div className="flex flex-wrap gap-1 mb-3">
+            {contractor.specialties.slice(0, 4).map((s) => (
+              <span key={s} className="px-1.5 py-0.5 bg-slate-100 text-slate-600 text-[10px] rounded border border-slate-200 capitalize">
+                {s}
+              </span>
+            ))}
+            {contractor.specialties.length > 4 && (
+              <span className="px-1.5 py-0.5 bg-slate-100 text-slate-500 text-[10px] rounded border border-slate-200">
+                +{contractor.specialties.length - 4} more
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Stats Row */}
+        <div className="grid grid-cols-3 gap-2 text-[11px]">
+          <div className="bg-slate-50 rounded p-1.5 text-center border border-slate-100">
+            <div className="font-bold text-slate-900">{contractor.experience_years}yr</div>
+            <div className="text-slate-500">Experience</div>
+          </div>
+          <div className="bg-slate-50 rounded p-1.5 text-center border border-slate-100">
+            <div className="font-bold text-slate-900">{contractor.completed_projects}</div>
+            <div className="text-slate-500">Projects</div>
+          </div>
+          <div className="bg-slate-50 rounded p-1.5 text-center border border-slate-100">
+            <div className="flex items-center justify-center gap-0.5">
+              <span className="font-bold text-slate-900">{contractor.rating?.toFixed(1)}</span>
+              <span className="text-amber-400">★</span>
+            </div>
+            <div className="text-slate-500">{contractor.review_count} reviews</div>
+          </div>
+        </div>
+
+        {budgetLabel && (
+          <p className="text-[11px] text-slate-500 mt-2">
+            💰 Typical budget: <span className="font-semibold text-slate-700">{budgetLabel}</span>
+          </p>
+        )}
+      </div>
+
+      {/* Actions */}
+      <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
+        <button
+          onClick={() => onViewDetail(contractor._id)}
+          className="flex-1 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium rounded-lg transition cursor-pointer"
+        >
+          View Profile
+        </button>
+        <button
+          onClick={() => onRequestQuote(contractor._id, contractor.business_name)}
+          className="flex-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg transition cursor-pointer shadow-xs"
+        >
+          Request Quote
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Contractor Discovery View ──────────────────────────────────────────────
+function ContractorDiscoveryView({
+  contractors, contractorTotal, loading, filters, setFilters, sort, setSort,
+  onApplyFilters, onViewDetail, onRequestQuote, projectContext, onBack, regions,
+}) {
+  const PROJECT_TYPES = [
+    'Residential House', 'Villa', 'Duplex', 'Apartment Unit', 'Row House', 'Farm House',
+  ];
+  const SORT_OPTIONS = [
+    { value: 'rating', label: 'Highest Rated' },
+    { value: 'relevance', label: 'Best Match' },
+    { value: 'experience', label: 'Most Experienced' },
+    { value: 'projects', label: 'Most Projects' },
+  ];
+
+  return (
+    <div className="space-y-4">
+      {/* Breadcrumb / Back */}
+      <div className="flex items-center gap-2 text-xs text-slate-500">
+        <button onClick={onBack} className="hover:text-slate-800 cursor-pointer flex items-center gap-1">
+          ← Back
+        </button>
+        <span>/</span>
+        <span className="text-slate-700 font-medium">Find Contractors</span>
+        {projectContext && (
+          <>
+            <span>/</span>
+            <span className="text-emerald-700 font-medium">{projectContext.projectName}</span>
+          </>
+        )}
+      </div>
+
+      {/* Project Context Banner */}
+      {projectContext && (
+        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs flex items-center gap-3">
+          <span className="text-emerald-600 text-base">🎯</span>
+          <div>
+            <span className="font-semibold text-emerald-900">Showing contractors matched to: </span>
+            <span className="text-emerald-800">
+              {projectContext.projectName} • {projectContext.location_text}
+              {projectContext.build_type && ` • ${projectContext.build_type}`}
+              {projectContext.total_sqft && ` • ${projectContext.total_sqft.toLocaleString('en-IN')} sqft`}
+              {projectContext.total_budget_lakh && ` • ₹${projectContext.total_budget_lakh}L budget`}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Filter Panel */}
+      <div className="p-4 bg-white border border-slate-200 rounded-xl shadow-xs space-y-3">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">Filter & Search</span>
+          <button
+            onClick={() => setFilters({ search: '', region: '', project_type: '', specialty: '', budget_min: '', budget_max: '', size_min: '', size_max: '' })}
+            className="text-[11px] text-slate-500 hover:text-slate-700 cursor-pointer underline"
+          >
+            Clear all
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-xs">
+          {/* Search */}
+          <div className="sm:col-span-2 md:col-span-3">
+            <input
+              type="text"
+              placeholder="Search by name, description, or location..."
+              value={filters.search}
+              onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+              onKeyDown={(e) => e.key === 'Enter' && onApplyFilters()}
+              className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-emerald-500 text-xs"
+            />
+          </div>
+
+          {/* Region */}
+          <div>
+            <label className="block text-slate-600 font-medium mb-1">State / Region</label>
+            <select
+              value={filters.region}
+              onChange={(e) => setFilters({ ...filters, region: e.target.value })}
+              className="w-full px-2.5 py-2 bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-emerald-500"
+            >
+              <option value="">All States</option>
+              {regions.map((r) => (
+                <option key={r.code} value={r.code}>{r.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Project Type */}
+          <div>
+            <label className="block text-slate-600 font-medium mb-1">Project Type</label>
+            <select
+              value={filters.project_type}
+              onChange={(e) => setFilters({ ...filters, project_type: e.target.value })}
+              className="w-full px-2.5 py-2 bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-emerald-500"
+            >
+              <option value="">All Types</option>
+              {PROJECT_TYPES.map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Sort */}
+          <div>
+            <label className="block text-slate-600 font-medium mb-1">Sort By</label>
+            <select
+              value={sort}
+              onChange={(e) => setSort(e.target.value)}
+              className="w-full px-2.5 py-2 bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-emerald-500"
+            >
+              {SORT_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Budget */}
+          <div>
+            <label className="block text-slate-600 font-medium mb-1">Budget Min (₹ Lakh)</label>
+            <input
+              type="number"
+              placeholder="e.g. 20"
+              value={filters.budget_min}
+              onChange={(e) => setFilters({ ...filters, budget_min: e.target.value })}
+              className="w-full px-2.5 py-2 bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-emerald-500"
+            />
+          </div>
+          <div>
+            <label className="block text-slate-600 font-medium mb-1">Budget Max (₹ Lakh)</label>
+            <input
+              type="number"
+              placeholder="e.g. 200"
+              value={filters.budget_max}
+              onChange={(e) => setFilters({ ...filters, budget_max: e.target.value })}
+              className="w-full px-2.5 py-2 bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-emerald-500"
+            />
+          </div>
+
+          {/* Project Size */}
+          <div>
+            <label className="block text-slate-600 font-medium mb-1">Min Area (sqft)</label>
+            <input
+              type="number"
+              placeholder="e.g. 1000"
+              value={filters.size_min}
+              onChange={(e) => setFilters({ ...filters, size_min: e.target.value })}
+              className="w-full px-2.5 py-2 bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-emerald-500"
+            />
+          </div>
+        </div>
+
+        <button
+          onClick={onApplyFilters}
+          disabled={loading}
+          className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-semibold rounded-lg transition cursor-pointer"
+        >
+          {loading ? 'Searching...' : '🔍 Search Contractors'}
+        </button>
+      </div>
+
+      {/* Results Header */}
+      <div className="flex items-center justify-between text-xs text-slate-600">
+        <span>
+          {loading ? 'Loading...' : `${contractorTotal} contractor${contractorTotal !== 1 ? 's' : ''} found`}
+        </span>
+        {projectContext && contractorTotal > 0 && (
+          <span className="text-emerald-700 font-medium">Sorted by match score</span>
+        )}
+      </div>
+
+      {/* Results Grid */}
+      {loading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs animate-pulse space-y-3">
+              <div className="h-4 bg-slate-200 rounded w-3/4" />
+              <div className="h-3 bg-slate-100 rounded w-1/2" />
+              <div className="h-10 bg-slate-100 rounded" />
+              <div className="grid grid-cols-3 gap-2">
+                <div className="h-12 bg-slate-100 rounded" />
+                <div className="h-12 bg-slate-100 rounded" />
+                <div className="h-12 bg-slate-100 rounded" />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : contractors.length === 0 ? (
+        <div className="p-10 bg-white border border-slate-200 rounded-xl text-center shadow-xs space-y-3">
+          <div className="text-4xl">🏗️</div>
+          <h3 className="text-sm font-bold text-slate-800">No contractors found</h3>
+          <p className="text-xs text-slate-500 max-w-sm mx-auto">
+            Try adjusting your filters, clearing the region or project type, or broadening your budget range.
+          </p>
+          <button
+            onClick={() => {
+              setFilters({ search: '', region: '', project_type: '', specialty: '', budget_min: '', budget_max: '', size_min: '', size_max: '' });
+              onApplyFilters();
+            }}
+            className="px-4 py-2 text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg cursor-pointer"
+          >
+            Clear Filters
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {contractors.map((c) => (
+            <ContractorCard
+              key={c._id}
+              contractor={c}
+              onViewDetail={onViewDetail}
+              onRequestQuote={onRequestQuote}
+              projectContext={projectContext}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Contractor Detail View ─────────────────────────────────────────────────
+function ContractorDetailView({ contractor, loading, projectContext, onBack, onRequestQuote }) {
+  if (loading) {
+    return (
+      <div className="space-y-4">
+        <button onClick={onBack} className="text-xs text-slate-500 hover:text-slate-800 cursor-pointer flex items-center gap-1">
+          ← Back to results
+        </button>
+        <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs animate-pulse space-y-4">
+          <div className="h-6 bg-slate-200 rounded w-1/2" />
+          <div className="h-4 bg-slate-100 rounded w-1/3" />
+          <div className="h-24 bg-slate-100 rounded" />
+          <div className="grid grid-cols-3 gap-3">
+            <div className="h-16 bg-slate-100 rounded" />
+            <div className="h-16 bg-slate-100 rounded" />
+            <div className="h-16 bg-slate-100 rounded" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!contractor) {
+    return (
+      <div className="space-y-4">
+        <button onClick={onBack} className="text-xs text-slate-500 hover:text-slate-800 cursor-pointer flex items-center gap-1">
+          ← Back to results
+        </button>
+        <div className="p-10 bg-white border border-slate-200 rounded-xl text-center shadow-xs">
+          <p className="text-sm text-slate-600">Contractor not found.</p>
+        </div>
+      </div>
+    );
+  }
+
+  const budgetLabel =
+    contractor.budget_min_lakh && contractor.budget_max_lakh
+      ? `₹${contractor.budget_min_lakh} Lakh – ₹${contractor.budget_max_lakh} Lakh`
+      : contractor.budget_min_lakh ? `₹${contractor.budget_min_lakh} Lakh and above` : 'Not specified';
+
+  const sizeLabel =
+    contractor.project_size_min_sqft && contractor.project_size_max_sqft
+      ? `${contractor.project_size_min_sqft.toLocaleString('en-IN')} – ${contractor.project_size_max_sqft.toLocaleString('en-IN')} sqft`
+      : contractor.project_size_min_sqft ? `${contractor.project_size_min_sqft.toLocaleString('en-IN')} sqft+` : 'Not specified';
+
+  return (
+    <div className="space-y-4">
+      {/* Breadcrumb */}
+      <div className="flex items-center gap-2 text-xs text-slate-500">
+        <button onClick={onBack} className="hover:text-slate-800 cursor-pointer">← Results</button>
+        <span>/</span>
+        <span className="text-slate-700 font-medium truncate">{contractor.business_name}</span>
+      </div>
+
+      {/* Profile Header */}
+      <div className="p-5 bg-white border border-slate-200 rounded-xl shadow-xs">
+        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap mb-1">
+              <h1 className="text-lg font-bold text-slate-900">{contractor.business_name}</h1>
+              {contractor.is_demo_data && (
+                <span className="text-[10px] px-1.5 py-0.5 bg-amber-100 text-amber-700 border border-amber-300 rounded font-medium">
+                  Demo Data
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-slate-500 flex items-center gap-1 mb-3">
+              <span>📍</span>{contractor.location_text}
+            </p>
+            <div className="flex items-center gap-3 text-xs">
+              <div className="flex items-center gap-1">
+                <StarRating rating={contractor.rating} />
+                <span className="font-semibold text-slate-800">{contractor.rating?.toFixed(1)}</span>
+                <span className="text-slate-500">({contractor.review_count} reviews)</span>
+              </div>
+              <span className="text-slate-300">|</span>
+              <span className="text-slate-600">{contractor.completed_projects} projects completed</span>
+              <span className="text-slate-300">|</span>
+              <span className="text-slate-600">{contractor.experience_years} years experience</span>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <button
+              onClick={() => onRequestQuote(contractor._id, contractor.business_name)}
+              className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-sm cursor-pointer transition"
+            >
+              📩 Request Quote
+            </button>
+            {contractor.phone && (
+              <a
+                href={`tel:${contractor.phone}`}
+                className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium rounded-xl cursor-pointer transition text-center"
+              >
+                📞 {contractor.phone}
+              </a>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* About */}
+        <div className="md:col-span-2 space-y-4">
+          <div className="p-4 bg-white border border-slate-200 rounded-xl shadow-xs">
+            <h2 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">About</h2>
+            <p className="text-xs text-slate-600 leading-relaxed">{contractor.description}</p>
+          </div>
+
+          {/* Specialties & Project Types */}
+          <div className="p-4 bg-white border border-slate-200 rounded-xl shadow-xs space-y-3">
+            <h2 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Specializations</h2>
+            <div className="flex flex-wrap gap-1.5">
+              {(contractor.specialties || []).map((s) => (
+                <span key={s} className="px-2 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200 text-[11px] rounded-full capitalize font-medium">
+                  {s}
+                </span>
+              ))}
+            </div>
+
+            <h2 className="text-xs font-bold text-slate-700 uppercase tracking-wider pt-1">Project Types</h2>
+            <div className="flex flex-wrap gap-1.5">
+              {(contractor.project_types || []).map((t) => (
+                <span key={t} className="px-2 py-1 bg-blue-50 text-blue-800 border border-blue-200 text-[11px] rounded-full font-medium">
+                  {t}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          {/* Service Areas */}
+          {contractor.region_codes?.length > 0 && (
+            <div className="p-4 bg-white border border-slate-200 rounded-xl shadow-xs">
+              <h2 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">Service Areas</h2>
+              <div className="flex flex-wrap gap-1.5">
+                {contractor.region_codes.map((code) => (
+                  <span key={code} className="px-2 py-1 bg-slate-100 text-slate-700 border border-slate-200 text-[11px] rounded font-mono">
+                    {code}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Right Panel: Key Stats */}
+        <div className="space-y-4">
+          <div className="p-4 bg-white border border-slate-200 rounded-xl shadow-xs space-y-3">
+            <h2 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Project Range</h2>
+
+            <div className="space-y-2 text-xs">
+              <div className="flex items-start justify-between gap-2">
+                <span className="text-slate-500">Typical Budget</span>
+                <span className="font-semibold text-slate-900 text-right">{budgetLabel}</span>
+              </div>
+              <div className="flex items-start justify-between gap-2">
+                <span className="text-slate-500">Project Size</span>
+                <span className="font-semibold text-slate-900 text-right">{sizeLabel}</span>
+              </div>
+              <div className="flex items-start justify-between gap-2">
+                <span className="text-slate-500">Experience</span>
+                <span className="font-semibold text-slate-900">{contractor.experience_years} years</span>
+              </div>
+              <div className="flex items-start justify-between gap-2">
+                <span className="text-slate-500">Completed</span>
+                <span className="font-semibold text-slate-900">{contractor.completed_projects} projects</span>
+              </div>
+              <div className="flex items-start justify-between gap-2">
+                <span className="text-slate-500">Available</span>
+                <span className={`font-semibold ${contractor.is_available ? 'text-emerald-700' : 'text-red-600'}`}>
+                  {contractor.is_available ? '✓ Yes' : '✗ Currently Busy'}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Contact Details */}
+          {(contractor.phone || contractor.email || contractor.website) && (
+            <div className="p-4 bg-white border border-slate-200 rounded-xl shadow-xs space-y-2 text-xs">
+              <h2 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Contact</h2>
+              {contractor.phone && (
+                <div className="flex items-center gap-2 text-slate-600">
+                  <span>📞</span><span>{contractor.phone}</span>
+                </div>
+              )}
+              {contractor.email && (
+                <div className="flex items-center gap-2 text-slate-600">
+                  <span>✉️</span><span className="break-all">{contractor.email}</span>
+                </div>
+              )}
+              {contractor.website && (
+                <div className="flex items-center gap-2 text-slate-600">
+                  <span>🌐</span>
+                  <a href={contractor.website} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline break-all">
+                    Website
+                  </a>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Disclaimer */}
+          {contractor.is_demo_data && (
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-800 leading-relaxed">
+              ℹ️ This is <strong>demo/seed data</strong> for development purposes only. Contact details are fictitious.
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Quote Requests View ────────────────────────────────────────────────────
+function QuoteRequestsView({ quoteRequests, loading, onBack, onViewContractor }) {
+  const STATUS_COLORS = {
+    pending: 'bg-amber-100 text-amber-800 border-amber-300',
+    contacted: 'bg-blue-100 text-blue-800 border-blue-300',
+    accepted: 'bg-emerald-100 text-emerald-800 border-emerald-300',
+    declined: 'bg-red-100 text-red-800 border-red-300',
+    completed: 'bg-slate-100 text-slate-700 border-slate-300',
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Breadcrumb */}
+      <div className="flex items-center gap-2 text-xs text-slate-500">
+        <button onClick={onBack} className="hover:text-slate-800 cursor-pointer">← Home</button>
+        <span>/</span>
+        <span className="text-slate-700 font-medium">My Quote Requests</span>
+      </div>
+
+      <div className="p-4 bg-white border border-slate-200 rounded-xl shadow-xs">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-sm font-bold text-slate-900">My Quote Requests</h2>
+          <span className="text-xs text-slate-500">{quoteRequests.length} total</span>
+        </div>
+
+        {loading ? (
+          <div className="space-y-3">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="h-20 bg-slate-100 rounded-lg animate-pulse" />
+            ))}
+          </div>
+        ) : quoteRequests.length === 0 ? (
+          <div className="py-10 text-center space-y-3">
+            <div className="text-4xl">📋</div>
+            <h3 className="text-sm font-bold text-slate-700">No requests yet</h3>
+            <p className="text-xs text-slate-500">
+              Find contractors and submit a quote request to see it here.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {quoteRequests.map((req) => {
+              const contractor = req.contractor_id;
+              const statusCls = STATUS_COLORS[req.status] || STATUS_COLORS.pending;
+              return (
+                <div key={req._id} className="p-3.5 border border-slate-200 rounded-lg hover:border-slate-300 transition">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap mb-1">
+                        <span className="font-semibold text-slate-900 text-xs">
+                          {contractor?.business_name || 'Unknown Contractor'}
+                        </span>
+                        <span className={`px-1.5 py-0.5 text-[10px] font-bold rounded-full border capitalize ${statusCls}`}>
+                          {req.status}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-500">
+                        📍 {contractor?.location_text || '—'}
+                      </p>
+                      {req.project_snapshot && (
+                        <p className="text-[11px] text-slate-500 mt-0.5">
+                          📁 {req.project_snapshot.project_name}
+                          {req.project_snapshot.total_sqft && ` · ${req.project_snapshot.total_sqft.toLocaleString('en-IN')} sqft`}
+                          {req.project_snapshot.estimated_total_inr && ` · ₹${Math.round(req.project_snapshot.estimated_total_inr / 100000)}L est.`}
+                        </p>
+                      )}
+                      {req.message && (
+                        <p className="text-[11px] text-slate-600 mt-1 line-clamp-2 italic">"{req.message}"</p>
+                      )}
+                    </div>
+                    <div className="text-right shrink-0 space-y-1">
+                      <p className="text-[10px] text-slate-400">
+                        {new Date(req.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </p>
+                      {contractor?._id && (
+                        <button
+                          onClick={() => onViewContractor(contractor._id)}
+                          className="text-[11px] text-blue-600 hover:underline cursor-pointer"
+                        >
+                          View Profile
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

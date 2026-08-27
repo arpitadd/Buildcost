@@ -6,6 +6,8 @@ import { fileURLToPath } from 'url';
 import connectDB from './db/connection.js';
 import authRoutes from './routes/authRoutes.js';
 import projectRoutes from './routes/projectRoutes.js';
+import contractorRoutes, { getUserQuoteRequests } from './routes/contractorRoutes.js';
+import { authenticateToken } from './middleware/auth.js';
 import { validateEnvironment } from './config/envCheck.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -51,6 +53,10 @@ app.use('/api/auth', authRoutes);
 
 // Project & Estimation routes
 app.use('/api/projects', projectRoutes);
+
+// Contractor discovery & quote request routes
+app.use('/api/contractors', contractorRoutes);
+app.get('/api/quote-requests', authenticateToken, getUserQuoteRequests);
 
 // Connect to MongoDB and start server (local dev only)
 if (process.env.NODE_ENV !== 'production') {
